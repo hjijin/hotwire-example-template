@@ -287,3 +287,91 @@ and bakes-in future-proofed support for acting upon multiple embedded
 [target properties]: https://stimulus.hotwired.dev/reference/targets#properties
 
 https://user-images.githubusercontent.com/2575027/154692364-0e5783e6-6197-4cff-95b4-256d80482896.mov
+
+### Pushing alerts with a Turbo Stream
+
+Since `<turbo-stream>` elements embed `<template>` elements of their own,
+they're inert until they're [connected to the document][]. Similarly, browsers
+omit the contents of `<template>` elements during rendering. By embedded a
+`<turbo-stream>` element _into_ a `<template>` element, we're able to transform
+the `<turbo-stream>` element's typically [kinetic energy][] into a [potential
+energy][] of sorts.
+
+```diff
+--- a/app/views/invitation_codes/show.html.erb
++++ b/app/views/invitation_codes/show.html.erb
+   <button type="button" value="<%= @invitation_code %>"
+           data-controller="clipboard clone"
+           data-clone-append-to-element-value="alerts"
+           data-action="click->clipboard#copy click->clone#append">
+     Copy to clipboard
+
+     <template data-clone-target="template">
++      <turbo-stream>
++        <template>
+           <%= render "alert" do %>
+             Copied to clipboard
+           <% end %>
++        </template>
++      </turbo-stream>
+     </template>
+   </button>
+ </fieldset>
+```
+
+Since the `<turbo-stream>` element's `[target]` attribute encodes which elements
+in the document to operate upon, we can append the `<turbo-stream>` element to
+_any_ element in the document. It will execute the operation, then remove
+itself. The `clone#append` action appends the element to the [Event.target][]
+(in our case, the `<button>` element).
+
+
+```diff
+--- a/app/views/invitation_codes/show.html.erb
++++ b/app/views/invitation_codes/show.html.erb
+   <button type="button" value="<%= @invitation_code %>"
+           data-controller="clipboard clone"
+-          data-clone-append-to-element-value="alerts"
+           data-action="click->clipboard#copy click->clone#append">
+     Copy to clipboard
+
+     <template data-clone-target="template">
+-      <turbo-stream>
++      <turbo-stream action="append" target="alerts">
+         <template>
+           <%= render "alert" do %>
+             Copied to clipboard
+           <% end %>
+         </template>
+       </turbo-stream>
+     </template>
+     </template>
+   </button>
+ </fieldset>
+```
+
+```diff
+--- a/app/javascript/controllers/clone_controller.js
++++ b/app/javascript/controllers/clone_controller.js
+ export default class extends Controller {
+   static targets = [ "template" ]
+-  static values = { appendToElement: String }
+-
+-  append() {
+-    const target = document.getElementById(this.appendToElementValue)
+-
++  append({ target }) {
+     for (const { content } of this.templateTargets) {
+       target.append(content.cloneNode(true))
+     }
+```
+
+[connected to the document]: https://developer.mozilla.org/en-US/docs/Web/API/Node/isConnected
+[kinetic energy]: https://en.wikipedia.org/wiki/Kinetic_energy
+[potential energy]: https://en.wikipedia.org/wiki/Potential_energy
+[Event.target]: https://developer.mozilla.org/en-US/docs/Web/API/Event/target
+
+We'll treat the outer `<template>` element as a `clone` target by marking it
+with the `[data-clone-target="template"]` attribute, and we'll route `click`
+events to a `clone` controller to [append][] the `<template>` element's contents
+to the document whenever the `<button>` element is clicked:
