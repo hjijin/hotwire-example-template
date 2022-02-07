@@ -375,3 +375,63 @@ We'll treat the outer `<template>` element as a `clone` target by marking it
 with the `[data-clone-target="template"]` attribute, and we'll route `click`
 events to a `clone` controller to [append][] the `<template>` element's contents
 to the document whenever the `<button>` element is clicked:
+
+## Popping alerts
+
+```diff
+--- a/app/views/application/_alert.html.erb
++++ b/app/views/application/_alert.html.erb
+-<div role="alert" class="border border-solid rounded-md m-4 p-4">
++<div role="alert" class="border border-solid rounded-md m-4 p-4"
++     data-controller="auto-remove" data-auto-remove-delay-value="10000">
+   <%= yield %>
+ </div>
+```
+
+```javascript
+// app/javascript/controller/auto_remove_controller.js
+
+import { Controller } from "@hotwired/stimulus"
+
+export default class extends Controller {
+  static values = { delay: Number }
+
+  connect() {
+    this.timeoutID = setTimeout(() => this.element.remove(), this.delayValue)
+  }
+
+  disconnect() {
+    clearTimeout(this.timeoutID)
+  }
+}
+```
+
+We're demonstrating a simplified version of this interaction. Production-ready
+versions might animate the alert into and out of frame, delay removal if the
+contents of the alert have focus, or prompt the user with a button to dismiss
+the alert.
+
+https://user-images.githubusercontent.com/2575027/154692670-9d718b67-7f1e-453e-8be8-c7617c86a915.mov
+
+## Wrapping up
+
+As an exercise for the reader, imagine the implications of this pattern in other
+contexts. For example, adding an email address from a [combobox][]-powered list
+of recipients, or removing a `<fieldset>` element of controls from a dynamic
+form.
+
+Included:
+
+* an entirely client-side interaction augmented by server-generated HTML
+* declaratively encoded DOM operations through `<template>` and `<turbo-stream>`
+  elements
+* three general purpose controllers with potential for re-use across the
+  codebase
+
+Excluded:
+
+* parallel alert implementations split across the client-server boundary
+* transforming JSON into HTML
+* `XMLHttpRequest`, `fetch`
+
+[combobox]: https://www.w3.org/TR/wai-aria-practices-1.1/#combobox
