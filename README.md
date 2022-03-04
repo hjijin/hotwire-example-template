@@ -160,3 +160,130 @@ export default class extends Controller {
 ```
 
 https://user-images.githubusercontent.com/2575027/154692773-cc91ff39-63e3-4e4e-857d-0657ea39d56e.mov
+
+## Pushing alerts
+
+If we'll be notifying end-user that they've copied the code to their clipboard,
+we'll need somewhere to push those messages. We'll render a `<div>` marked with
+[`[id="alerts"]`][id-attr]:
+
+```diff
+--- a/app/views/invitation_codes/show.html.erb
++++ b/app/views/invitation_codes/show.html.erb
++<div id="alerts" class="absolute bottom-0 right-0 w-96"></div>
++
+ <fieldset>
+```
+
+Next, we'll introduce the `app/views/application/_alert.html.erb` view partial
+to render an individual alert message that's lightly styled to resemble a [toast
+message][toast]:
+
+[toast]: https://getbootstrap.com/docs/4.3/components/toasts/
+
+```erb
+<%# app/views/application/_alert.html.erb %>
+
+<div role="alert" class="border border-solid rounded-md m-4 p-4">
+  <%= yield %>
+</div>
+```
+
+Then, within the `<button type="button">` element, we'll nest a `<template>`
+element containing a render of `app/views/application/_alert.html.erb` with
+`"Copied to clipboard"` as its contents:
+
+```diff
+--- a/app/views/invitation_codes/show.html.erb
++++ b/app/views/invitation_codes/show.html.erb
+  <button type="button" value="<%= @invitation_code %>"
+          data-controller="clipboard"
+          data-action="click->clipboard#copy">
+    Copy to clipboard
++
++   <template>
++     <%= render "alert" do %>
++       Copied to clipboard
++     <% end %>
++   </template>
+  </button>
+```
+
+On its own, a `<template>` element is completely inert, and its contents are not
+rendered.
+
+We'll treat the outer `<template>` element as a `clone` target by marking it
+with the `[data-clone-target="template"]` attribute. We'll route `click` events
+dispatched by the `<button>` to a `clone#append` action that [appends][] the
+`<template>` contents to the document. We'll mark the `<button>` with
+`[data-clone-append-to-element-value="alerts"]` to encode _which_ element to
+append its contents to. The `"alerts"` value directs the `clone#append` action
+to append the `<template data-clone-target="template">` element's contents into
+the page's `<div id="alerts">`:
+
+[appends]: https://developer.mozilla.org/en-US/docs/Web/API/Element/append
+
+```diff
+--- a/app/views/invitation_codes/show.html.erb
++++ b/app/views/invitation_codes/show.html.erb
+  <button type="button" value="<%= @invitation_code %>"
+-          data-controller="clipboard"
++          data-controller="clipboard clone"
++          data-clone-append-to-element-value="alerts"
+-          data-action="click->clipboard#copy">
++          data-action="click->clipboard#copy click->clone#append">
+    Copy to clipboard
+
+-   <template>
++   <template data-clone-target="template">
+      <%= render "alert" do %>
+        Copied to clipboard
+      <% end %>
+    </template>
+  </button>
+```
+
+With our server-generated content in-place, we'll introduce the `clone`
+controller. It acts upon the `<template>` elements that it references through
+its [`templateTargets` property][stimulus-target]. The `clone#append` action
+iterates through that collection, [clones][cloneNode] each element's
+[content][template-content] fragment, and appends that content fragment to the
+document:
+
+[template-content]: https://developer.mozilla.org/en-US/docs/Web/API/HTMLTemplateElement/content
+[cloneNode]: https://developer.mozilla.org/en-US/docs/Web/API/Node/cloneNode
+[stimulus-target]: https://stimulus.hotwired.dev/reference/targets
+
+```javascript
+// app/javascript/controllers/clone_controller.js
+
+import { Controller } from "@hotwired/stimulus"
+
+export default class extends Controller {
+  static targets = [ "template" ]
+  static values = { appendToElement: String }
+
+  append() {
+    const target = document.getElementById(this.appendToElementValue)
+
+    for (const { content } of this.templateTargets) {
+      target.append(content.cloneNode(true))
+    }
+  }
+}
+```
+
+The `clone#append` references the collection of `<template>` elements through
+its the **plural** `this.templateTargets` property. In our example's case,
+there's a single element marked with `[data-clone-target="template"]`, so direct
+access through the **singular** `this.templateTarget` could suffice. Access to
+singular references should guard against missing
+`[data-clone-target="template"]` targets through the [**existential**
+`this.hasTemplateTarget` property][target properties]. Looping over the
+collection of targets supports **both** scenarios **without** any conditionals,
+and bakes-in future-proofed support for acting upon multiple embedded
+`<template>` targets.
+
+[target properties]: https://stimulus.hotwired.dev/reference/targets#properties
+
+https://user-images.githubusercontent.com/2575027/154692364-0e5783e6-6197-4cff-95b4-256d80482896.mov
